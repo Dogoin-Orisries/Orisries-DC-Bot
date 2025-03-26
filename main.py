@@ -4,11 +4,13 @@ import discord
 from discord import app_commands
 
 # 連接 SQLite 資料庫
-conn = sqlite3.connect("data/gacha_record.db")
-cursor = conn.cursor()
+connection_db_gacha_record = sqlite3.connect("data/gacha_record.db")
+cursor_gacha_record = connection_db_gacha_record.cursor()
+
+
 
 # 建立抽卡紀錄表
-cursor.execute("""
+cursor_gacha_record.execute("""
     CREATE TABLE IF NOT EXISTS 抽卡紀錄 (
         伺服器_id INTEGER,
         使用者_id INTEGER,
@@ -23,32 +25,34 @@ cursor.execute("""
         PRIMARY KEY (伺服器_id, 使用者_id)
     )
 """)
-conn.commit()
+connection_db_gacha_record.commit()
 
 bot = discord.Client(intents=discord.Intents.default())
+gacha_group = app_commands.Group(name="尋覓模擬", description="尋覓模擬")
 tree = app_commands.CommandTree(bot)
+tree.add_command(gacha_group)
 
-def get_user_data(guild_id, user_id):
+def get_user_data_gacha_record(guild_id, user_id):
     """取得使用者抽卡數據"""
-    cursor.execute("""
+    cursor_gacha_record.execute("""
         SELECT 總計出金數量, 總計常駐數量, 總計限定數量, 總計出紫數量, 總計出藍數量, 上一次出金, 出金計數, 出紫計數
         FROM 抽卡紀錄 WHERE 伺服器_id = ? AND 使用者_id = ?
     """, (guild_id, user_id))
-    data = cursor.fetchone()
+    data = cursor_gacha_record.fetchone()
     
     if not data:
-        cursor.execute("""
+        cursor_gacha_record.execute("""
             INSERT INTO 抽卡紀錄 (伺服器_id, 使用者_id)
             VALUES (?, ?)
         """, (guild_id, user_id))
-        conn.commit()
+        connection_db_gacha_record.commit()
         return (0, 0, 0, 0, 0, None, 0, 0)
     
     return data
 
-def update_user_data(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count):
+def update_user_data_gacha_record(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count):
     """更新使用者抽卡數據"""
-    cursor.execute("""
+    cursor_gacha_record.execute("""
         INSERT INTO 抽卡紀錄 (伺服器_id, 使用者_id, 總計出金數量, 總計常駐數量, 總計限定數量, 總計出紫數量, 總計出藍數量, 上一次出金, 出金計數, 出紫計數)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(伺服器_id, 使用者_id)
@@ -62,7 +66,7 @@ def update_user_data(guild_id, user_id, gold_total, resident_total, up_total, pu
             出金計數 = ?, 
             出紫計數 = ?
     """, (guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count))
-    conn.commit()
+    connection_db_gacha_record.commit()
 
 GOLD_RATE = 1.2
 PURPLE_RATE = 15.0
@@ -109,33 +113,33 @@ def gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_g
 
     return rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count
 
-@tree.command(name="尋覓模擬單抽", description="進行單抽")
+@gacha_group.command(name="單抽", description="進行單抽")
 async def discord_single_gacha(interaction: discord.Interaction):
     guild_id, user_id = interaction.guild.id, interaction.user.id
-    gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data(guild_id, user_id)
+    gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
     rarity = ""
 
     rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
 
-    update_user_data(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
+    update_user_data_gacha_record(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
     await interaction.response.send_message(f"{interaction.user.mention} 目前尋覓：{gold_count}/90\n單抽結果：{rarity}")
 
-@tree.command(name="尋覓模擬十抽", description="進行十抽")
+@gacha_group.command(name="十抽", description="進行十抽")
 async def discord_ten_gacha(interaction: discord.Interaction):
     guild_id, user_id = interaction.guild.id, interaction.user.id
-    gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data(guild_id, user_id)
+    gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
     results = []
     for i in range(10):
         rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
         results.append(rarity)
 
-    update_user_data(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
+    update_user_data_gacha_record(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
     await interaction.response.send_message(f"{interaction.user.mention} 目前尋覓：{gold_count}/90\n十抽結果：{' '.join(results)}")
 
-@tree.command(name="查詢尋覓模擬", description="查詢尋覓模擬的相關資料")
+@gacha_group.command(name="查詢", description="查詢尋覓模擬的相關資料")
 async def discord_query_gacha(interaction: discord.Interaction):
     guild_id, user_id = interaction.guild.id, interaction.user.id
-    gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data(guild_id, user_id)
+    gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
 
     await interaction.response.send_message(f"{interaction.user.mention}\n目前尋覓：{gold_count}/90\n總抽數：{gold_total+purple_total+blue_total}\n總計常駐數量：{resident_total}\n總計限定數量：{up_total}\n總計出金數量：{gold_total}\n總計出紫數量：{purple_total}\n總計出藍數量：{blue_total}\n上次出金英雄：{last_gold}")
 
