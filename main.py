@@ -5,10 +5,10 @@ from discord import app_commands
 from datetime import datetime, timedelta
 
 # 連接 SQLite 資料庫
-connection_db_gacha_record = sqlite3.connect("beta_date/gacha_record.db")
+connection_db_gacha_record = sqlite3.connect("data/gacha_record.db")
 cursor_gacha_record = connection_db_gacha_record.cursor()
 
-connection_db_patrol_record = sqlite3.connect("beta_date/patrol_record.db")
+connection_db_patrol_record = sqlite3.connect("data/patrol_record.db")
 cursor_patrol_record = connection_db_patrol_record.cursor()
 
 # 建立抽卡紀錄表
