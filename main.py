@@ -1,8 +1,9 @@
 import random
 import sqlite3
 import discord
+from discord.ext import tasks
 from discord import app_commands
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # 連接 SQLite 資料庫
 connection_db_gacha_record = sqlite3.connect("data/gacha_record.db")
@@ -32,6 +33,7 @@ connection_db_gacha_record.commit()
 cursor_patrol_record.execute("""
     CREATE TABLE IF NOT EXISTS 巡視紀錄 (
         伺服器_id INTEGER,
+        頻道_id INTEGER,
         使用者_id INTEGER,
         總計出金數量 INTEGER DEFAULT 0,
         總計出紫數量 INTEGER DEFAULT 0,
@@ -109,13 +111,14 @@ def get_user_data_patrol_record(guild_id, user_id):
     
     return data
 
-def update_user_data_patrol_record(guild_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time):
+def update_user_data_patrol_record(guild_id, channel_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time):
     """更新使用者巡視數據"""
     cursor_patrol_record.execute("""
-        INSERT INTO 巡視紀錄 (伺服器_id, 使用者_id, 總計出金數量, 總計出紫數量, 總計出藍數量, 目前巡視裝備, 目前巡視等級, 目前巡視時間, 巡視完成時間)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO 巡視紀錄 (伺服器_id, 頻道_id, 使用者_id, 總計出金數量, 總計出紫數量, 總計出藍數量, 目前巡視裝備, 目前巡視等級, 目前巡視時間, 巡視完成時間)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(伺服器_id, 使用者_id)
         DO UPDATE SET 
+            頻道_id = ?,
             總計出金數量 = ?, 
             總計出紫數量 = ?, 
             總計出藍數量 = ?, 
@@ -123,8 +126,7 @@ def update_user_data_patrol_record(guild_id, user_id, gold_total, purple_total, 
             目前巡視等級 = ?, 
             目前巡視時間 = ?, 
             巡視完成時間 = ?
-    """, (guild_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time, 
-          gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time))
+    """, (guild_id, channel_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time, channel_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time))
     connection_db_patrol_record.commit()
 
 
@@ -197,6 +199,30 @@ def patrol():
 
     return level, time, rarity
 
+@tasks.loop(minutes=1)
+async def check_patrol_timers():
+    cursor_patrol_record.execute("SELECT 伺服器_id, 頻道_id, 使用者_id, 巡視完成時間 FROM 巡視紀錄")
+    rows = cursor_patrol_record.fetchall()
+    current_time = datetime.now()
+    for 伺服器_id, 頻道_id, 使用者_id, 巡視完成時間 in rows:
+        gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time = get_user_data_patrol_record(伺服器_id, 使用者_id)
+        if patrol_finish_time != None:
+            patrol_finish_time = datetime.strptime(patrol_finish_time, "%Y-%m-%d %H:%M:%S.%f")
+        if patrol_finish_time == None:
+            break
+        elif patrol_finish_time < current_time:
+            channel = bot.get_channel(頻道_id)
+            if channel:
+                await channel.send(f"<@{使用者_id}> 巡視為 {patrol_level}   {patrol_time}   巡視完成   恭喜獲得：{now_patrol}")
+            patrol_finish_time = None
+            if now_patrol == "金裝":
+                gold_total += 1
+            elif now_patrol == "紫裝":
+                purple_total += 1
+            elif now_patrol == "藍裝":
+                blue_total += 1
+            update_user_data_patrol_record(伺服器_id, 頻道_id, 使用者_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time)
+
 @gacha_group.command(name="單抽", description="進行單抽")
 async def discord_single_gacha(interaction: discord.Interaction):
     guild_id, user_id = interaction.guild.id, interaction.user.id
@@ -229,7 +255,7 @@ async def discord_query_gacha(interaction: discord.Interaction):
 
 @patrol_group.command(name="巡視", description="進行裝備巡視，獲得金裝/紫裝/藍裝")
 async def equipment_patrol(interaction: discord.Interaction):
-    guild_id, user_id = interaction.guild.id, interaction.user.id
+    guild_id, channel_id, user_id = interaction.guild.id, interaction.channel_id, interaction.user.id
     gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time = get_user_data_patrol_record(guild_id, user_id)
     current_time = datetime.now()
     if patrol_finish_time != None:
@@ -244,7 +270,7 @@ async def equipment_patrol(interaction: discord.Interaction):
         patrol_finish_time = current_time + time_to_add
         patrol_level = level
         patrol_time = f"{time["hours"]}:{mins}"
-        update_user_data_patrol_record(guild_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time)
+        update_user_data_patrol_record(guild_id, channel_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time)
     elif patrol_finish_time > current_time:
         time_difference = patrol_finish_time - current_time
         total_seconds = int(time_difference.total_seconds())
@@ -267,7 +293,7 @@ async def equipment_patrol(interaction: discord.Interaction):
         elif now_patrol == "藍裝":
             blue_total += 1
         
-        update_user_data_patrol_record(guild_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time)
+        update_user_data_patrol_record(guild_id, channel_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time)
 
 @patrol_group.command(name="統計", description="查詢巡視模擬的相關資料")
 async def discord_query_patrol(interaction: discord.Interaction):
@@ -279,6 +305,7 @@ async def discord_query_patrol(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     await tree.sync()
+    check_patrol_timers.start()
     print(f"✅ {bot.user} 已上線！")
 
 bot.run("YOUR_TOKEN")
