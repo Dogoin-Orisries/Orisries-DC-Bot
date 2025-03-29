@@ -135,7 +135,7 @@ PURPLE_RATE = 15.0
 BLUE_RATE = 83.8
 PITY_LIMIT = 90
 
-def gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count):
+def gacha_精選尋覓(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count):
     gold_count += 1  # 累積抽卡次數
     roll = random.uniform(0, 100)
 
@@ -175,6 +175,8 @@ def gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_g
 
     return rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count
 
+
+
 PATROL_LEVELS = [
     ("★", {"hours": 1, "mins": 0}, {"金裝": 0.00, "紫裝": 28.99, "藍裝": 71.01}),
     ("★★", {"hours": 1, "mins": 0}, {"金裝": 0.81, "紫裝": 31.97, "藍裝": 67.22}),
@@ -209,7 +211,7 @@ async def check_patrol_timers():
         if patrol_finish_time != None:
             patrol_finish_time = datetime.strptime(patrol_finish_time, "%Y-%m-%d %H:%M:%S.%f")
         if patrol_finish_time == None:
-            break
+            continue
         elif patrol_finish_time < current_time:
             channel = bot.get_channel(頻道_id)
             if channel:
@@ -229,7 +231,7 @@ async def discord_single_gacha(interaction: discord.Interaction):
     gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
     rarity = ""
 
-    rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
+    rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = gacha_精選尋覓(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
 
     update_user_data_gacha_record(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
     await interaction.response.send_message(f"{interaction.user.mention} 目前尋覓：{gold_count}/90\n單抽結果：{rarity}")
@@ -240,18 +242,37 @@ async def discord_ten_gacha(interaction: discord.Interaction):
     gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
     results = []
     for i in range(10):
-        rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = gacha(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
+        rarity, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = gacha_精選尋覓(gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
         results.append(rarity)
 
     update_user_data_gacha_record(guild_id, user_id, gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count)
     await interaction.response.send_message(f"{interaction.user.mention} 目前尋覓：{gold_count}/90\n十抽結果：{' '.join(results)}")
 
 @gacha_group.command(name="統計", description="查詢尋覓模擬的相關資料")
-async def discord_query_gacha(interaction: discord.Interaction):
-    guild_id, user_id = interaction.guild.id, interaction.user.id
+async def discord_query_gacha(interaction: discord.Interaction, 使用者: discord.Member = None):
+    guild_id = interaction.guild.id
+    user_id = 使用者.id if 使用者 else interaction.user.id
     gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
-
-    await interaction.response.send_message(f"{interaction.user.mention}\n目前尋覓：{gold_count}/90\n總抽數：{gold_total+purple_total+blue_total}\n總計常駐數量：{resident_total}\n總計限定數量：{up_total}\n總計出金數量：{gold_total}\n總計出紫數量：{purple_total}\n總計出藍數量：{blue_total}\n上次出金英雄：{last_gold}")
+    if 使用者 and 使用者.nick is not None:
+        名稱 = 使用者.nick
+    elif 使用者 and 使用者.name is not None:
+        if 使用者.id == interaction.user.id:
+            名稱 = interaction.user.id
+        else:
+            名稱 = 使用者.name
+    else:
+        名稱 = interaction.user.mention
+    embed = discord.Embed(title="尋覓模擬統計", color=discord.Color.gold())
+    embed.add_field(name="名稱", value=使用者.mention if 使用者 else interaction.user.mention, inline=False)
+    embed.add_field(name="目前尋覓", value=f"{gold_count}/90", inline=False)
+    embed.add_field(name="總抽數", value=f"{gold_total+purple_total+blue_total}", inline=False)
+    embed.add_field(name="總計常駐數量", value=f"{resident_total}", inline=True)
+    embed.add_field(name="總計限定數量", value=f"{up_total}", inline=True)
+    embed.add_field(name="總計出金數量", value=f"{gold_total}", inline=True)
+    embed.add_field(name="總計出紫數量", value=f"{purple_total}", inline=True)
+    embed.add_field(name="總計出藍數量", value=f"{blue_total}", inline=True)
+    embed.add_field(name="上次出金英雄", value=f"{last_gold if last_gold else '無'}", inline=False)
+    await interaction.response.send_message(embed=embed)
 
 @patrol_group.command(name="巡視", description="進行裝備巡視，獲得金裝/紫裝/藍裝")
 async def equipment_patrol(interaction: discord.Interaction):
@@ -282,25 +303,19 @@ async def equipment_patrol(interaction: discord.Interaction):
         seconds_remaining = f"{seconds_remaining:02d}"
 
         await interaction.response.send_message(f"{interaction.user.mention} 巡視為 {patrol_level}   {patrol_time}   巡視還有{hours_remaining}:{minutes_remaining}:{seconds_remaining}")
-    elif patrol_finish_time < current_time:
-        await interaction.response.send_message(f"{interaction.user.mention} 巡視為 {patrol_level}   {patrol_time}   巡視完成   恭喜獲得：{now_patrol}")
-        patrol_finish_time = None
-
-        if now_patrol == "金裝":
-            gold_total += 1
-        elif now_patrol == "紫裝":
-            purple_total += 1
-        elif now_patrol == "藍裝":
-            blue_total += 1
-        
-        update_user_data_patrol_record(guild_id, channel_id, user_id, gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time)
 
 @patrol_group.command(name="統計", description="查詢巡視模擬的相關資料")
-async def discord_query_patrol(interaction: discord.Interaction):
-    guild_id, user_id = interaction.guild.id, interaction.user.id
+async def discord_query_patrol(interaction: discord.Interaction, 使用者: discord.Member = None):
+    guild_id = interaction.guild.id
+    user_id = 使用者.id if 使用者 else interaction.user.id
     gold_total, purple_total, blue_total, now_patrol, patrol_level, patrol_time, patrol_finish_time = get_user_data_patrol_record(guild_id, user_id)
-
-    await interaction.response.send_message(f"{interaction.user.mention}\n總巡視次數：{gold_total+purple_total+blue_total}\n總計出金數量：{gold_total}\n總計出紫數量：{purple_total}\n總計出藍數量：{blue_total}")
+    embed = discord.Embed(title="巡視模擬統計", color=discord.Color.blue())
+    embed.add_field(name="名稱", value=使用者.mention if 使用者 else interaction.user.mention, inline=False)
+    embed.add_field(name="總巡視次數", value=f"{gold_total+purple_total+blue_total}", inline=False)
+    embed.add_field(name="總計出金數量", value=f"{gold_total}", inline=True)
+    embed.add_field(name="總計出紫數量", value=f"{purple_total}", inline=True)
+    embed.add_field(name="總計出藍數量", value=f"{blue_total}", inline=True)
+    await interaction.response.send_message(embed=embed)
 
 @bot.event
 async def on_ready():
