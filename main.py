@@ -253,15 +253,6 @@ async def discord_query_gacha(interaction: discord.Interaction, 使用者: disco
     guild_id = interaction.guild.id
     user_id = 使用者.id if 使用者 else interaction.user.id
     gold_total, resident_total, up_total, purple_total, blue_total, last_gold, gold_count, blue_count = get_user_data_gacha_record(guild_id, user_id)
-    if 使用者 and 使用者.nick is not None:
-        名稱 = 使用者.nick
-    elif 使用者 and 使用者.name is not None:
-        if 使用者.id == interaction.user.id:
-            名稱 = interaction.user.id
-        else:
-            名稱 = 使用者.name
-    else:
-        名稱 = interaction.user.mention
     embed = discord.Embed(title="尋覓模擬統計", color=discord.Color.gold())
     embed.add_field(name="名稱", value=使用者.mention if 使用者 else interaction.user.mention, inline=False)
     embed.add_field(name="目前尋覓", value=f"{gold_count}/90", inline=False)
